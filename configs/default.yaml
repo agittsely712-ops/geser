@@ -1,0 +1,69 @@
+# Semua angka algoritma ada di sini. Durasi menit dihitung dalam menit asli;
+# TIME_SCALE membagi durasi tersebut saat demo.
+broker:
+  host: broker.hivemq.com
+  port: 8883
+  tls: true
+  keepalive_s: 30
+  ws_url: wss://broker.hivemq.com:8884/mqtt
+
+edge:
+  window_s: 2.0            # panjang jendela fitur
+  sample_interval_ms: 100  # 10 Hz
+  gravity_alpha: 0.9       # koefisien low-pass vektor gravitasi
+  calibration_s: 5.0       # lama kalibrasi baseline
+  accel_sensor: accelerometer
+  gyro_sensor: gyroscope
+  max_gyro_dt_s: 0.5       # celah antar sampel gyro yang masih diintegrasi
+
+stillness:
+  still_angle_deg: 10.0
+  exit_hysteresis_deg: 4.0
+  reposition_angle_deg: 15.0
+  accel_dev_max: 0.25      # nilai awal, lalu dipersonalisasi oleh noise floor
+  gyro_path_max_rad: 0.15
+  reposition_gyro_rad: 0.8
+  reposition_gyro_window_s: 10.0
+  label_min: 5.0           # menit diam sebelum berlabel STILL
+
+noise:
+  settle_s: 60.0           # waktu asli sebelum menghitung noise floor
+  k: 3.0
+  min_limit: 0.10
+  max_limit: 0.40
+  min_samples: 5
+
+lean:
+  angle_deg: 25.0
+  duration_min: 5.0
+
+fusion:
+  desk_filter: true
+  desk_disturb_accel_rms: 0.6
+  pair_gap_s: 5.0
+  data_gap_s: 6.0
+
+reminders:
+  level1_min: 30.0
+  level2_min: 45.0
+  level3_min: 60.0
+  cooldown_min: 5.0
+  snooze_options_min: [5, 10]
+  vibrate_short_ms: 400
+  vibrate_long_ms: 1500
+  l3_pulses: 3
+  l3_pause_ms: 800
+
+score:
+  start: 100.0
+  still_penalty_per_min: 3.0
+  lean_penalty_per_min: 1.0
+  reposition_bonus: 5.0
+
+engine:
+  tick_s: 1.0
+  session_heartbeat_s: 2.0
+  max_clock_skew_s: 30.0
+  time_scale: 1.0
+  time_scale_min: 1.0
+  time_scale_max: 120.0
