@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b3c49">
+<title>GESER AI</title>
+<style>
+:root{--bg:#f4f7f8;--card:#fff;--ink:#1f2937;--mut:#5b6770;--dark:#0b3c49;--acc:#f2a541;--line:#d5dde0;--ok:#1c7293;--bad:#c0392b}
+@media (prefers-color-scheme:dark){:root{--bg:#0e1a1f;--card:#16262d;--ink:#e8eef0;--mut:#9fb0b8;--line:#2a3d46}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,sans-serif}
+main{max-width:640px;margin:0 auto;padding:16px}
+h1{font-size:22px;margin:4px 0 2px}
+.sub{color:var(--mut);font-size:13px;margin:0 0 14px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+button{font:inherit;font-weight:600;padding:10px 14px;border-radius:10px;border:0;background:var(--dark);color:#fff;cursor:pointer}
+button.alt{background:transparent;color:var(--ink);border:1px solid var(--line)}
+button:disabled{opacity:.45}
+select,input[type=text]{font:inherit;padding:9px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink)}
+#label{font-size:30px;font-weight:800;letter-spacing:.5px}
+#desc{color:var(--mut)}
+.big{display:flex;justify-content:space-between;align-items:baseline}
+.bar{display:grid;grid-template-columns:130px 1fr 48px;gap:8px;align-items:center;font-size:13px;margin-top:6px}
+.track{height:10px;background:var(--line);border-radius:6px;overflow:hidden}
+.fill{height:100%;background:var(--ok);width:0;transition:width .3s}
+.fill.top{background:var(--acc)}
+table{width:100%;border-collapse:collapse;font-size:14px}
+td{padding:3px 0;border-bottom:1px solid var(--line)}td+td{text-align:right;font-variant-numeric:tabular-nums}
+#alert{display:none;background:#fdecea;color:#7a1f14;border-radius:10px;padding:10px;margin-top:10px;font-weight:600}
+.pill{font-size:12px;padding:2px 8px;border-radius:99px;background:var(--line);color:var(--mut)}
+.sim label{display:block;font-size:13px;margin-top:8px;color:var(--mut)}
+.sim input{width:100%}
+small{color:var(--mut)}
+</style>
+</head>
+<body>
+<main>
+<h1>GESER AI</h1>
+<p class="sub">Neural network yang mengenali kondisi duduk dari sensor HP. Bukan alat medis.</p>
+
+<div class="card">
+  <div class="row">
+    <select id="role"><option value="body">HP Badan (saku dada)</option><option value="desk">HP Meja</option></select>
+    <input id="room" type="text" placeholder="Kode ruangan (opsional)" size="16" autocapitalize="off">
+  </div>
+  <div class="row" style="margin-top:10px">
+    <button id="start">Mulai sensor</button>
+    <button id="calib" class="alt" disabled>Kalibrasi 6 dtk (duduk tegak)</button>
+    <label class="row"><input type="checkbox" id="simtoggle"> Mode simulasi</label>
+  </div>
+  <p class="sub" id="connection">Dua HP: isi kode ruangan yang sama, lalu mulai sensor pada keduanya.</p><p class="sub" id="status" style="margin:10px 0 0">Siap.</p>
+</div>
+
+<div class="card" id="outcard">
+  <div class="big"><span class="sub" style="margin:0">OUTPUT (B)</span><span class="pill" id="net">1 HP</span></div>
+  <div id="label">-</div>
+  <div id="desc">Tekan Mulai sensor.</div>
+  <div id="alert"></div>
+  <div id="bars"></div>
+</div>
+
+<div class="card">
+  <span class="sub" style="margin:0">INPUT (A): fitur jendela 2 detik</span>
+  <table id="feat"></table>
+</div>
+
+<div class="card sim" id="simcard" style="display:none">
+  <b>Simulator</b> <small>(menggerakkan sensor virtual lewat pipeline yang sama)</small>
+  <label>Kemiringan badan: <span id="v_tilt">0</span>°<input id="s_tilt" type="range" min="0" max="60" value="0"></label>
+  <label>Gerakan badan: <span id="v_move">0</span><input id="s_move" type="range" min="0" max="100" value="0"></label>
+  <label>Guncangan meja: <span id="v_desk">0</span><input id="s_desk" type="range" min="0" max="100" value="0"></label>
+</div>
+<p class="sub">Model: <span id="meta"></span></p><p class="sub">Angka akurasi berasal dari data simulasi, belum pengujian pada pengguna nyata. Model memperkirakan kondisi dari posisi HP. HP harus tetap di saku dada dengan posisi yang sama setelah kalibrasi.</p>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/mqtt@5.10.1/dist/mqtt.min.js" async></script>
+<script>
+const MODEL = {"version":1,"kind":"mlp","classes":["TEGAK","CONDONG","BERGERAK","MEJA_TERGANGGU"],"features":["body_tilt_deg","body_tilt_step_deg","body_accel_dev_rms","body_gyro_path_rad","desk_accel_dev_rms","desk_gyro_path_rad"],"impute":[12.56216,0.328005,0.081995,0.04825,0.08382,0.04289],"mean":[17.43930437777781,0.6553521388888894,0.24600480555555457,0.2654046777777775,0.3985425722222224,0.21704303611111125],"scale":[13.871340444310093,0.981788200780048,0.3843556504424224,0.46786373534990194,0.6633281000257928,0.38582362895395483],"layers":[{"w":[[0.04143419192423513,0.908369784017103,0.5532035443293282,-0.07679192408357755,-0.029063183052006475,-0.16181737947825578,-0.7338578069601901,0.08016245749208412,0.532678202744103,0.4887682773811242,-0.420568465051153,0.29352361243930114,0.8700885713612769,-1.1030117185648969,-0.21779301934122225,0.11999946846953888],[-0.1085524124100077,-0.15217082508126897,-0.16772957030479274,-0.673987713709793,0.020132941119274793,-0.42668865880098644,-0.28333382056702006,-0.47456253899963674,0.0328438207713405,-0.09994613824744546,-0.6338605272798459,-0.3746563740790176,-0.2489996839909022,-0.676856342294959,0.16691916279522426,-0.1256973619652194],[-0.7713389272986113,0.21528530326470216,0.7214505513196428,-0.1838769657919445,0.3162192195681454,-0.23587520010726543,0.3205816073119087,0.11548769714954835,-0.6030755494783714,-0.2152869075259258,-1.0999812240048317,0.08801813397849326,-0.30682094775215635,-0.1651151046279882,0.19948181747265015,-0.5756536386036705],[-0.6024310853396498,-0.7458779672652008,0.4924865430480186,0.5986066018520699,0.8521427225027413,0.5368059790877118,0.0021532568787017503,0.5716043347180046,-0.8367806699873706,-0.39112610974020273,-1.1958692656032868,-0.48049990875736415,-0.16041483467350964,-0.5620984160420106,0.5019039897749304,-1.095653081338489],[-0.3572160054602633,0.024134819495487236,-0.8625984098734412,0.8359592429039693,-1.048798528633255,0.26561337501294596,0.33969675118210696,-0.588539544512271,-0.8567763507590548,0.4367631348630612,0.3914054234342772,0.6842793348165075,0.10229909151069477,-0.8484878937228295,-0.7895010541253019,-1.0542548952019661],[0.17424270365618638,0.15811957093333368,-0.6459400977811687,-0.1621750513736856,-0.7853252045375102,-0.30725106299144184,0.4439378267170399,-0.04165181150969438,0.01724134732301901,0.32652554156886343,-0.13701230734800682,0.5257607816522416,0.015910180267106944,-0.0827590049072996,-0.13759760797031476,-0.6363453063930213]],"b":[-0.019993286393392578,0.39196833554461963,-0.00313506947548849,-0.41395198568544544,0.08541417569462524,0.7123559743990282,0.1687595121373999,0.11703525836977859,0.5429958197019966,-0.033713423989879615,0.3887527742230833,0.4487531489409783,0.008467721551840656,-0.5577520043310396,0.34833654778412804,-0.5977140887775785]},{"w":[[0.605619112444393,0.5453426490050328,-0.0009450118843176772,0.21846355616865026,-0.18416963030709868,-0.19409864505269195,0.4139838221504298,0.5997764964495896],[0.3558279200820347,0.15178246527976963,-0.3020640283023593,-0.5032748350063896,-0.26981837905000117,0.6610629908076164,0.294607385340077,0.7705995117149864],[-0.5776898934141993,-0.32546288854477134,-0.018472657976336095,-0.2876170245156565,0.2034963222741302,0.27384209589345015,0.26667868095230857,-0.9172307977073746],[0.14440605244502974,0.09360603450036413,-0.43565043369790835,0.38610655556086837,0.6208466998066865,-0.60503739744264,-0.06577637223761452,-0.6994823422383121],[-0.6916102353014719,-0.9569022530862225,0.3051003014389806,-0.025686077866975448,0.2366638921910257,0.04891419041870041,0.07823502761014665,-1.4250389236824172],[-0.6473720109420625,-0.07620414252930305,0.3555293955427889,-0.3774383812198586,0.38120774854213957,0.5290009628877134,-0.6383080699665237,0.24845313839965918],[-0.29822430622596563,-0.14095721045722814,-0.050099189500295654,0.017652779823798235,-0.7509093920118175,0.46709084857320093,-0.37350776898942606,-0.14035006161895291],[-0.6024640176889923,-0.1756348224533431,0.12319091844313183,-0.4329323424787903,0.3199853601636191,0.09484419041133402,0.041339975919025024,-0.8504901014048766],[0.5701546805576739,-0.3120561973632836,0.5724552353124147,-0.44348557111743697,-0.7183344000930865,0.1648483904168335,0.8147263756463322,0.7349973110450146],[-0.4225289665045695,0.30381837520073757,0.0957714425206976,-0.02966123151249663,-0.2250243493924808,0.02730519418138625,-1.4511177409908127,0.5982684001816123],[0.5813056396225754,0.602407906036396,-0.5037356731590138,-0.29602553062748277,0.09522721207249932,0.49211146754801194,0.052356912933570164,0.6348822473656068],[0.02591663671805409,-0.6002639751676634,-0.5466430240491535,0.32699873416980135,-0.11897700252138402,-0.08950818132149871,-0.6186618609226943,0.44587496503165824],[-0.5356671457341398,-0.9583121261257032,-0.0522623222208535,0.06835960414172482,0.207641691182247,0.23475501169713311,0.17369378996390802,0.17288554638774042],[0.02450410162431214,0.9024886701245255,0.6926149603122754,0.049540492434675225,-0.47001860688073355,0.11703170499826784,-1.1078360933965252,-0.5951770282702143],[-0.6140430126864442,-0.8414194705788911,0.5992993151784517,-0.12921937899838679,0.19823355053268332,0.3998266437126091,-0.08230307460454041,-0.7575526238982194],[1.0391859864440678,0.40495883087835444,0.4998349297071903,0.1545299135552568,-0.13476919476349888,-1.2213402168303071,0.885099910230735,-0.6388200798066763]],"b":[0.39273503824470457,0.24727555914906654,0.40792914102113603,-0.2507619124010318,-0.5309014302040888,0.950358328400485,-0.040290017676243864,0.5933265893036603]},{"w":[[0.6865198756530145,0.8039662592029698,-1.3315526984881014,-0.02349705830143264],[0.9106165870703652,-0.883168781806243,-0.6900074720852615,0.26544122348733257],[0.4642577922347057,0.4352171081437567,0.7050883626095583,-0.8509958003805593],[0.0857096074462049,0.511535575000162,-0.8892643548921876,0.18009036818097063],[0.6764202042042302,0.3464094183557881,-0.44935825717824174,0.6741902678443022],[-0.7208613394497702,-0.6941484559927755,0.9304408102447217,0.6524694122259318],[-0.06309127032160879,1.2874878024248453,0.36425571082655583,-0.31732091900290554],[0.1101402056329263,0.4776026583671716,-0.24001408404918134,0.8749761339134073]],"b":[0.2708929399599068,-0.0055576098603046555,0.2773272901222293,-0.4976573749636718]}],"meta":{"test_accuracy":0.955,"val_accuracy":0.9583,"best_epoch":149,"n_train":3600,"n_val":1200,"n_test":1200,"data":"posture_dataset.csv","seed":42}};
+const TEXT = {TEGAK:"Duduk tegak, posisi baik",CONDONG:"Badan condong dari posisi acuan",
+  BERGERAK:"Sedang bergerak / ganti posisi",MEJA_TERGANGGU:"Meja terguncang, bukan gerakan tubuh"};
+const HZ=10, WIN=20, G0=9.81, ALPHA=0.9, PAIR_MS=5000, LEAN_ALERT_S=20, CALIB_WINDOWS=3;
+
+// ---------- Model (sama dengan src/geser/ml/model.py)
+function predictProba(v){
+  let x=v.map((val,i)=>((Number.isNaN(val)?MODEL.impute[i]:val)-MODEL.mean[i])/MODEL.scale[i]);
+  MODEL.layers.forEach((L,li)=>{
+    const out=L.b.slice();
+    x.forEach((xi,i)=>{for(let j=0;j<out.length;j++) out[j]+=xi*L.w[i][j];});
+    if(li===MODEL.layers.length-1){const m=Math.max(...out),e=out.map(o=>Math.exp(o-m)),s=e.reduce((a,b)=>a+b);x=e.map(q=>q/s);}
+    else x=out.map(o=>Math.max(0,o));
+  });
+  return x;
+}
+function predict(v){const p=predictProba(v);let b=0;p.forEach((q,i)=>{if(q>p[b])b=i;});return {label:MODEL.classes[b],conf:p[b],probs:p};}
+
+// ---------- Fitur (sama dengan src/geser/domain/features.py)
+const mag=v=>Math.hypot(v[0],v[1],v[2]);
+const norm=v=>{const m=mag(v);return m>1e-8?[v[0]/m,v[1]/m,v[2]/m]:[0,0,1];};
+const angle=(u,v)=>Math.acos(Math.max(-1,Math.min(1,u[0]*v[0]+u[1]*v[1]+u[2]*v[2])))*180/Math.PI;
+class Extractor{
+  constructor(){this.s=null;this.prev=null;this.base=null;this.cal=[];this.calLeft=0;}
+  beginCalibration(n){this.cal=[];this.calLeft=n;}
+  extract(win){ // win: [{t,a:[3],w:[3]}]
+    for(const p of win){this.s=this.s?this.s.map((q,i)=>ALPHA*q+(1-ALPHA)*p.a[i]):p.a.slice();}
+    const g=norm(this.s);
+    if(this.calLeft>0){this.cal.push(g);this.calLeft--;
+      if(this.calLeft===0){const sum=[0,0,0];this.cal.forEach(c=>c.forEach((q,i)=>sum[i]+=q));this.base=norm(sum);}}
+    const step=this.prev?angle(g,this.prev):0; this.prev=g;
+    const rms=Math.sqrt(win.reduce((a,p)=>a+(mag(p.a)-G0)**2,0)/win.length);
+    let path=0; for(let i=1;i<win.length;i++){const dt=win[i].t-win[i-1].t; if(dt>0&&dt<=0.5) path+=mag(win[i].w)*dt;}
+    return {tilt:this.base?angle(g,this.base):NaN,step,rms,gyro:path,calibrating:this.calLeft>0};
+  }
+}
+
+// ---------- Aplikasi
+const $=id=>document.getElementById(id);
+const app={running:false,buf:[],latest:null,ext:new Extractor(),recent:[],leanS:0,desk:null,mqtt:null,timer:null,sim:false,lastMotion:0,session:0};
+const roleOf=()=>$("role").value;
+
+function render(f,deskF,res){
+  const fmt=v=>Number.isNaN(v)?"-":v.toFixed(2);
+  $("feat").innerHTML=[["body_tilt_deg",f.tilt],["body_tilt_step_deg",f.step],["body_accel_dev_rms",f.rms],
+    ["body_gyro_path_rad",f.gyro],["desk_accel_dev_rms",deskF?deskF.rms:NaN],["desk_gyro_path_rad",deskF?deskF.gyro:NaN]]
+    .map(([k,v])=>`<tr><td>${k}</td><td>${fmt(v)}</td></tr>`).join("");
+  if(!res) return;
+  const sm=app.recent.length?Object.entries(app.recent.reduce((c,l)=>(c[l]=(c[l]||0)+1,c),{})).sort((a,b)=>b[1]-a[1])[0][0]:res.label;
+  $("label").textContent=sm; $("desc").textContent=TEXT[sm]+` · hasil stabil dari 3 jendela terakhir. Prediksi terbaru: ${res.label} (${(res.conf*100).toFixed(0)}%).`;
+  $("bars").innerHTML=MODEL.classes.map((c,i)=>`<div class="bar"><span>${c}</span><div class="track"><div class="fill ${c===res.label?"top":""}" style="width:${(res.probs[i]*100).toFixed(0)}%"></div></div><span>${(res.probs[i]*100).toFixed(0)}%</span></div>`).join("");
+  if(sm==="CONDONG") app.leanS+=2; else if(sm!=="MEJA_TERGANGGU") app.leanS=0;
+  const al=$("alert");
+  if(app.leanS>=LEAN_ALERT_S){al.style.display="block";al.textContent=`Condong ${app.leanS} dtk. Tegakkan badan!`;if(navigator.vibrate)navigator.vibrate(300);}
+  else al.style.display="none";
+}
+
+function onWindow(win){
+  const f=app.ext.extract(win);
+  if(roleOf()==="desk"&&!app.sim){
+    $("label").textContent="Mode meja"; $("desc").textContent="HP ini mengirim getaran meja ke HP badan.";
+    publish({rms:f.rms,gyro:f.gyro,ts:Date.now()}); render({tilt:NaN,step:f.step,rms:f.rms,gyro:f.gyro},null,null); return;
+  }
+  let deskF=null;
+  if(app.sim){deskF=app.simDesk;}
+  else if(app.desk&&Date.now()-app.desk.ts<=PAIR_MS) deskF=app.desk;
+  $("net").textContent=app.sim?"SIMULASI":deskF?"2 HP terhubung":"1 HP · data meja belum ada";
+  if(!app.ext.base && !f.calibrating){$("label").textContent="Belum kalibrasi";$("desc").textContent="Duduk tegak lalu tekan Kalibrasi 6 dtk.";render(f,deskF,null);return;}
+  if(f.calibrating){$("label").textContent="Kalibrasi...";$("desc").textContent="Duduk tegak, jangan bergerak.";render(f,deskF,null);return;}
+  if($("status").textContent.startsWith("Kalibrasi"))setStatus("Kalibrasi selesai. AI aktif.");
+  const res=predict([f.tilt,f.step,f.rms,f.gyro,deskF?deskF.rms:NaN,deskF?deskF.gyro:NaN]);
+  app.recent.push(res.label); if(app.recent.length>3) app.recent.shift();
+  render(f,deskF,res);
+}
+
+function tick(){ // 10 Hz
+  let a,w;
+  if(app.sim){
+    const th=+$("s_tilt").value*Math.PI/180, mv=+$("s_move").value/100, dk=+$("s_desk").value/100;
+    const na=0.04+mv*1.2, nw=0.008+mv*0.45, r=()=>(Math.random()+Math.random()+Math.random()-1.5)*1.15;
+    a=[G0*Math.sin(th)+na*r(),na*r(),G0*Math.cos(th)+na*r()]; w=[nw*r(),nw*r(),nw*r()];
+    app.simDesk={rms:0.05+dk*1.6+0.02*Math.random(),gyro:0.02+dk*0.4+0.01*Math.random()};
+  } else if(app.latest && performance.now()-app.lastMotion<=500){a=app.latest.a;w=app.latest.w;} else {
+    app.buf=[];app.recent=[];app.leanS=0;
+    if(app.latest){$("label").textContent="Data sensor terhenti";$("desc").textContent="Buka kembali halaman dan pastikan layar HP tetap menyala.";$("bars").innerHTML="";$("alert").style.display="none";}
+    return;
+  }
+  app.buf.push({t:performance.now()/1000,a,w});
+  if(app.buf.length>=WIN){const win=app.buf; app.buf=[]; onWindow(win);}
+}
+
+function onMotion(e){
+  const g=e.accelerationIncludingGravity, r=e.rotationRate;
+  if(!g||![g.x,g.y,g.z].every(Number.isFinite)||Math.hypot(g.x,g.y,g.z)<1e-8) return;
+  app.lastMotion=performance.now();
+  const d=Math.PI/180;
+  app.latest={a:[g.x,g.y,g.z],w:r?[(r.beta||0)*d,(r.gamma||0)*d,(r.alpha||0)*d]:[0,0,0]};
+}
+
+async function start(){
+  if(app.running){stop();return;}
+  app.sim=$("simtoggle").checked;
+  if(!app.sim){
+    if(typeof DeviceMotionEvent==="undefined"){setStatus("Browser ini tidak punya sensor gerak. Centang Mode simulasi.");return;}
+    if(typeof DeviceMotionEvent.requestPermission==="function"){
+      try{
+        const ans=await Promise.race([DeviceMotionEvent.requestPermission(),new Promise(r=>setTimeout(()=>r("timeout"),4000))]);
+        if(ans!=="granted"){setStatus("Izin sensor ditolak. Izinkan di pengaturan browser.");return;}
+      }catch(e){setStatus("Izin sensor gagal: "+e.message);return;}
+    }
+    window.addEventListener("devicemotion",onMotion);
+    setTimeout(()=>{if(!app.latest&&app.running)setStatus("Tidak ada data sensor. Buka lewat HTTPS (GitHub Pages) atau pakai Mode simulasi.");},3000);
+  }
+  app.running=true;app.session++;app.buf=[];app.latest=null;app.desk=null;app.ext=new Extractor();app.recent=[];app.leanS=0;
+  ["role","room","simtoggle"].forEach(id=>$(id).disabled=true);
+  $("label").textContent="Menunggu data";$("bars").innerHTML="";$("alert").style.display="none";
+  $("start").textContent="Berhenti";$("calib").disabled=roleOf()==="desk";
+  connect();
+  app.timer=setInterval(tick,1000/HZ);
+  setStatus(app.sim?"Simulasi berjalan.":"Sensor berjalan. Duduk tegak lalu tekan Kalibrasi.");
+}
+function stop(){
+  app.running=false;app.session++;clearInterval(app.timer);app.buf=[];app.latest=null;app.desk=null;
+  ["role","room","simtoggle"].forEach(id=>$(id).disabled=false);
+  $("label").textContent="Berhenti";$("bars").innerHTML="";$("alert").style.display="none";$("connection").textContent="Sesi berhenti.";window.removeEventListener("devicemotion",onMotion);
+  if(app.mqtt){app.mqtt.end(true);app.mqtt=null;}
+  $("start").textContent="Mulai sensor";$("calib").disabled=true;setStatus("Berhenti.");
+}
+function setStatus(t){$("status").textContent=t;}
+
+// ---------- 2 HP lewat MQTT (broker publik HiveMQ lewat WebSocket TLS)
+const topic=()=>"geser-ai/"+$("room").value.trim().toLowerCase()+"/desk";
+function connect(){
+  const room=$("room").value.trim().toLowerCase(), role=roleOf(), session=app.session;
+  const info=t=>$("connection").textContent=t;
+  if(app.sim){info("Mode simulasi: tanpa data dari HP nyata.");return;}
+  if(!room){info("Kode ruangan kosong: mode satu HP. Isi kode yang sama untuk menghubungkan dua HP.");return;}
+  const channel="geser-ai/"+room+"/desk", deadline=Date.now()+10000;
+  function attempt(){
+    if(!app.running||app.session!==session)return;
+    if(typeof mqtt==="undefined"){
+      if(Date.now()<deadline){info("Memuat koneksi dua HP...");setTimeout(attempt,250);}
+      else info("Pustaka koneksi gagal dimuat. Periksa internet, lalu Berhenti dan Mulai kembali.");
+      return;
+    }
+    const c=mqtt.connect("wss://broker.hivemq.com:8884/mqtt");app.mqtt=c;
+    const active=()=>app.running&&app.session===session&&app.mqtt===c;
+    c.on("connect",()=>{if(!active())return;if(role==="body")c.subscribe(channel);info("Broker terhubung · ruangan "+room+(role==="body"?" · menunggu data HP meja.":" · mengirim data meja."));});
+    c.on("message",(_t,m)=>{if(!active()||role!=="body"||_t!==channel)return;try{const d=JSON.parse(m.toString());if(Number.isFinite(d.rms)&&d.rms>=0&&Number.isFinite(d.gyro)&&d.gyro>=0){app.desk={rms:d.rms,gyro:d.gyro,ts:Date.now()};info("Data HP meja diterima · ruangan "+room);}}catch(_){}});
+    c.on("close",()=>{if(active()){app.desk=null;info("Broker terputus. Mencoba menghubungkan kembali...");}});
+    c.on("error",()=>{if(active())info("Koneksi broker gagal. Periksa internet pada kedua HP.");});
+  }
+  attempt();
+}
+function publish(obj){ if(app.mqtt&&app.mqtt.connected&&roleOf()==="desk") app.mqtt.publish(topic(),JSON.stringify(obj)); }
+
+$("start").onclick=start;
+$("calib").onclick=()=>{app.buf=[];app.ext=new Extractor();app.ext.beginCalibration(CALIB_WINDOWS);app.recent=[];app.leanS=0;$("bars").innerHTML="";$("alert").style.display="none";setStatus("Kalibrasi... duduk tegak 6 detik.");};
+$("simtoggle").onchange=e=>{$("simcard").style.display=e.target.checked?"block":"none";};
+[["s_tilt","v_tilt"],["s_move","v_move"],["s_desk","v_desk"]].forEach(([s,v])=>{$(s).oninput=()=>$(v).textContent=$(s).value;});
+if(typeof DeviceMotionEvent==="undefined"){$("simtoggle").checked=true;$("simcard").style.display="block";}
+$("meta").textContent=`MLP ${MODEL.layers.map(l=>l.b.length).join("-")}, akurasi uji data simulasi ${(MODEL.meta.test_accuracy*100).toFixed(1)}%`;
+window.GESER={predict,Extractor};
+</script>
+</body>
+</html>
