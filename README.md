@@ -129,6 +129,7 @@ Buka alamat lokal yang muncul di terminal (biasanya `http://localhost:8501`) pad
 - `python tools/run_scenarios.py` : Menjalankan 7 skenario uji secara instan di memori tanpa koneksi internet.
 
 ### Daftar Dokumen di Folder `docs/`:
+- [`docs/AI.md`](docs/AI.md) : **Versi AI (revisi)**: Input (A) -> Output (B), dataset, training, hasil, dan cara menjalankan.
 - [`docs/SETUP.md`](docs/SETUP.md) : Instalasi Termux & Termux:API dari F-Droid, izin Android, wake-lock, dan troubleshooting.
 - [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) : Diagram arsitektur, sequence diagram, state machine, serta tabel topic dan payload.
 - [`docs/ALGORITHM.md`](docs/ALGORITHM.md) : Rumus Processing 1 & 2, tabel ambang, tabel transisi state, dan rumus Movement Score.

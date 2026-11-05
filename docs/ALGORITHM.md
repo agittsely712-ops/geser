@@ -2,6 +2,8 @@
 
 Kategori algoritma yang digunakan adalah **algoritma lain: rule-based dengan state machine**. Perhitungan rata-rata dan simpangan baku pada penentuan *noise floor* merupakan statistik deskriptif sederhana dan bukan kecerdasan buatan (AI/ML).
 
+> **Pembaruan (revisi AI):** selain mesin aturan ini, GESER kini memiliki lapisan AI *supervised learning* (neural network) yang memetakan fitur sensor (A) ke kondisi duduk (B). Lihat [`AI.md`](AI.md).
+
 > **Penafian:** Sistem hanya memperkirakan dari gerakan perangkat, bukan mengukur postur dan bukan alat medis.
 
 ---

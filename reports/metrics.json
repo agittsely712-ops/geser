@@ -1,0 +1,79 @@
+{
+  "results": {
+    "Aturan (lama)": {
+      "val": 0.8875,
+      "test": 0.8767
+    },
+    "Decision Tree": {
+      "val": 0.9525,
+      "test": 0.9467
+    },
+    "Neural Network (MLP)": {
+      "val": 0.9583,
+      "test": 0.955
+    }
+  },
+  "chosen_by_validation": "Neural Network (MLP)",
+  "exported_model": "Neural Network (MLP)",
+  "test_accuracy": 0.955,
+  "target": 0.95,
+  "passed": true,
+  "confusion_matrix": [
+    [
+      288,
+      5,
+      5,
+      1
+    ],
+    [
+      16,
+      280,
+      4,
+      0
+    ],
+    [
+      2,
+      8,
+      285,
+      4
+    ],
+    [
+      4,
+      2,
+      3,
+      293
+    ]
+  ],
+  "per_class": {
+    "TEGAK": {
+      "precision": 0.9290322580645162,
+      "recall": 0.9632107023411371,
+      "f1-score": 0.9458128078817734,
+      "support": 299.0
+    },
+    "CONDONG": {
+      "precision": 0.9491525423728814,
+      "recall": 0.9333333333333333,
+      "f1-score": 0.9411764705882353,
+      "support": 300.0
+    },
+    "BERGERAK": {
+      "precision": 0.9595959595959596,
+      "recall": 0.9531772575250836,
+      "f1-score": 0.9563758389261745,
+      "support": 299.0
+    },
+    "MEJA_TERGANGGU": {
+      "precision": 0.9832214765100671,
+      "recall": 0.9701986754966887,
+      "f1-score": 0.9766666666666667,
+      "support": 302.0
+    }
+  },
+  "split": {
+    "train": 3600,
+    "val": 1200,
+    "test": 1200
+  },
+  "best_epoch": 149
+}

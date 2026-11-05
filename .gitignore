@@ -10,3 +10,4 @@ dist/
 .pytest_cache/
 recordings/
 *.zip
+recordings/
